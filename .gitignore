@@ -1,0 +1,25 @@
+# Ignore all .log files
+*.log
+
+# Ignore the 'build' directory and its contents
+/build/
+
+# Ignore Python-specific files and directories
+__pycache__/
+*.pyc
+*.pyd
+.Python/
+venv/ # Virtual environment directory
+
+# Ignore temporary files created by various editors/IDEs
+.DS_Store # macOS specific
+Thumbs.db # Windows specific
+.vscode/ # VS Code specific
+.idea/ # IntelliJ IDEA specific
+
+# Ignore files matching a pattern within any subdirectory
+**/temp/*.tmp
+
+# Ignore specific files
+set-env-vars--dev.ps1
+
