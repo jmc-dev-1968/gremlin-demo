@@ -45,10 +45,10 @@ Details have been omitted here but you can see these components referenced in th
  
    vertices--movie.csv
    ```
-   "~id","~label","name:String","year:String","director:String"
-   "3ed24801-a100-476a-b403-f96e99018a63","movie","The Shawshank Redemption","1994","Frank Darabont"
-   "2e77808c-0dfb-4281-8925-685c950b8ef2","movie","The Godfather","1972","Francis Ford Coppola"
-   "d8e553ba-78c4-456f-9319-077144f59841","movie","The Dark Knight","2008","Christopher Nolan"
+   "~id","~label","name:String","year:String"
+   "0e412ecc-5fba-47cf-a870-c1a548b01e24","movie","The Shawshank Redemption","1994"
+   "6b87f694-588d-472c-86c3-8370663abcb4","movie","The Godfather","1972"
+   "4fc517aa-ab66-4e66-a40c-e100d3151632","movie","The Dark Knight","2008"
    ...
    ```
    vertices--actor.csv
@@ -59,12 +59,28 @@ Details have been omitted here but you can see these components referenced in th
    "6477bff4-f799-431e-9e5a-8da402d8947a","actor","Christian Bale"
    ...
    ```
+   vertices--director.csv
+   ```
+   "~id","~label","name:String"
+   "a0b0adaa-9b13-4dbf-a0e3-0530bb905b50","director","Frank Darabont"
+   "46cdb583-f906-42a5-a71a-df637c74b291","director","Francis Ford Coppola"
+   "04e9f15d-a14c-4b7c-8320-abc7e5f66783","director","Christopher Nolan"
+   ...
+   ```
    edges--actor-movie.csv
    ```
    "~id","~from","~to","~label"
    "d9bfdfb4-9b07-489c-b653-70c1bf68b29c","c9e81239-34d0-4003-bca2-77677b4cd164","3ed24801-a100-476a-b403-f96e99018a63","acted_in"
    "a38ffff9-ac97-4a9d-a5ee-1768094effbd","ea8d8c2d-3d77-4447-95e9-67e40477bca2","2e77808c-0dfb-4281-8925-685c950b8ef2","acted_in"
    "cd3342ad-2277-4917-bc94-f71ca5c06ad8","6477bff4-f799-431e-9e5a-8da402d8947a","d8e553ba-78c4-456f-9319-077144f59841","acted_in"
+   ...
+   ```
+   edges--movie-director.csv
+   ```
+   "~id","~from","~to","~label"
+   "c007337e-a235-44cc-8973-20f9b0ad49dd","0e412ecc-5fba-47cf-a870-c1a548b01e24","a0b0adaa-9b13-4dbf-a0e3-0530bb905b50","directed_by"
+   "fcf15fc8-3904-4e16-9d96-87a14aa7d2af","6b87f694-588d-472c-86c3-8370663abcb4","46cdb583-f906-42a5-a71a-df637c74b291","directed_by"
+   "fda7e2cf-3cd7-4680-8672-3dac5f8bfdc9","4fc517aa-ab66-4e66-a40c-e100d3151632","04e9f15d-a14c-4b7c-8320-abc7e5f66783","directed_by"
    ...
    ```
 
@@ -83,16 +99,19 @@ Details have been omitted here but you can see these components referenced in th
    ```
    
    ```   
-   +--------------------+---------+
-   | object             |   count |
-   |--------------------+---------|
-   | vertex (movie)     |    1000 |
-   | vertex (actor)     |    2709 |
-   | edge (actor-movie) |    4000 |
-   +--------------------+---------+
+   +-----------------------+---------+
+   | object                |   count |
+   |-----------------------+---------|
+   | vertex (movie)        |    1000 |
+   | vertex (actor)        |    2709 |
+   | vertex (director)     |     548 |
+   | edge (actor-movie)    |    4000 |
+   | edge (movie-director) |    1000 |
+   +-----------------------+---------+
+
    ```
    
-5. run some queries on our data
+5. run some gremlin queries on our data
    ```sh
    python main.py analyze   
    ```
@@ -100,59 +119,56 @@ Details have been omitted here but you can see these components referenced in th
    ```   
    (1) sample vertices (movies)
    
-   +---------------------------------------------------+--------+----------------------+
-   | name                                              |   year | director             |
-   |---------------------------------------------------+--------+----------------------|
-   | The Shawshank Redemption                          |   1994 | Frank Darabont       |
-   | The Godfather                                     |   1972 | Francis Ford Coppola |
-   | The Dark Knight                                   |   2008 | Christopher Nolan    |
-   | The Godfather: Part II                            |   1974 | Francis Ford Coppola |
-   | 12 Angry Men                                      |   1957 | Sidney Lumet         |
-   | The Lord of the Rings: The Return of the King     |   2003 | Peter Jackson        |
-   | Pulp Fiction                                      |   1994 | Quentin Tarantino    |
-   | Schindler's List                                  |   1993 | Steven Spielberg     |
-   | Inception                                         |   2010 | Christopher Nolan    |
-   | Fight Club                                        |   1999 | David Fincher        |
-   | The Lord of the Rings: The Fellowship of the Ring |   2001 | Peter Jackson        |
-   | Forrest Gump                                      |   1994 | Robert Zemeckis      |
-   | Il buono, il brutto, il cattivo                   |   1966 | Sergio Leone         |
-   | The Lord of the Rings: The Two Towers             |   2002 | Peter Jackson        |
-   | The Matrix                                        |   1999 | Lana Wachowski       |
-   | Goodfellas                                        |   1990 | Martin Scorsese      |
-   | Star Wars: Episode V - The Empire Strikes Back    |   1980 | Irvin Kershner       |
-   | One Flew Over the Cuckoo's Nest                   |   1975 | Milos Forman         |
-   | Hamilton                                          |   2020 | Thomas Kail          |
-   | Gisaengchung                                      |   2019 | Bong Joon Ho         |
-   +---------------------------------------------------+--------+----------------------+
+   +-----------------------------------------------+--------+
+   | name                                          |   year |
+   |-----------------------------------------------+--------|
+   | The Shawshank Redemption                      |   1994 |
+   | The Godfather                                 |   1972 |
+   | The Dark Knight                               |   2008 |
+   | The Godfather: Part II                        |   1974 |
+   | 12 Angry Men                                  |   1957 |
+   | The Lord of the Rings: The Return of the King |   2003 |
+   | Pulp Fiction                                  |   1994 |
+   | Schindler's List                              |   1993 |
+   | Inception                                     |   2010 |
+   | Fight Club                                    |   1999 |
+   +-----------------------------------------------+--------+
    
    (2) sample vertices (actors)
    
-   +---------------------+
-   | name                |
-   |---------------------|
-   | Tim Robbins         |
-   | Marlon Brando       |
-   | Christian Bale      |
-   | Al Pacino           |
-   | Henry Fonda         |
-   | Elijah Wood         |
-   | John Travolta       |
-   | Liam Neeson         |
-   | Leonardo DiCaprio   |
-   | Brad Pitt           |
-   | Tom Hanks           |
-   | Clint Eastwood      |
-   | Lilly Wachowski     |
-   | Robert De Niro      |
-   | Mark Hamill         |
-   | Jack Nicholson      |
-   | Lin-Manuel Miranda  |
-   | Kang-ho Song        |
-   | Suriya              |
-   | Matthew McConaughey |
-   +---------------------+
+   +-------------------+
+   | name              |
+   |-------------------|
+   | Tim Robbins       |
+   | Marlon Brando     |
+   | Christian Bale    |
+   | Al Pacino         |
+   | Henry Fonda       |
+   | Elijah Wood       |
+   | John Travolta     |
+   | Liam Neeson       |
+   | Leonardo DiCaprio |
+   | Brad Pitt         |
+   +-------------------+
    
-   (3) top 10 actors who have starred with the most other actors
+   (3) sample vertices (directors)
+   
+   +----------------------+
+   | name                 |
+   |----------------------|
+   | Frank Darabont       |
+   | Francis Ford Coppola |
+   | Christopher Nolan    |
+   | Sidney Lumet         |
+   | Peter Jackson        |
+   | Quentin Tarantino    |
+   | Steven Spielberg     |
+   | David Fincher        |
+   | Robert Zemeckis      |
+   | Sergio Leone         |
+   +----------------------+
+   
+   (4) top 10 actors who have starred with the most other actors
    
    +-------------------+----------------------+
    | actor             |   fellow_actor_count |
@@ -169,7 +185,19 @@ Details have been omitted here but you can see these components referenced in th
    | Johnny Depp       |                   27 |
    +-------------------+----------------------+
    
-   (4) top 10 actors who have starred with both de niro and pacino
+   (5) top 5 directors with the most movies
+   
+   +------------------+---------------+
+   | director         |   movie_count |
+   |------------------+---------------|
+   | Alfred Hitchcock |            14 |
+   | Steven Spielberg |            13 |
+   | Hayao Miyazaki   |            11 |
+   | Martin Scorsese  |            10 |
+   | Akira Kurosawa   |            10 |
+   +------------------+---------------+
+   
+   (6) top 10 actors who have starred with both de niro and pacino
    
    +----------------+
    | shared_actor   |
@@ -183,19 +211,20 @@ Details have been omitted here but you can see these components referenced in th
    | Harvey Keitel  |
    +----------------+
    
-   (5) top 10 actors who have starred with both de niro and pacino, and their movies
+   (7) top 10 actors who have starred with both de niro and pacino, and their movies
    
    +----------------+------------------------+------------------------+
    | shared_actor   | movies (de niro)       | movies (pacino)        |
    |----------------+------------------------+------------------------|
-   | Val Kilmer     | Heat                   | Heat                   |
-   | Jon Voight     | Heat                   | Heat                   |
-   | Harvey Keitel  | The Irishman           | The Irishman           |
-   | Joe Pesci      | Goodfellas             | The Irishman           |
-   | Diane Keaton   | The Godfather: Part II | The Godfather          |
-   | John Cazale    | The Deer Hunter        | Dog Day Afternoon      |
    | Robert Duvall  | The Godfather: Part II | The Godfather: Part II |
-   +----------------+------------------------+------------------------+ 
+   | Val Kilmer     | Heat                   | Heat                   |
+   | Harvey Keitel  | The Irishman           | The Irishman           |
+   | Jon Voight     | Heat                   | Heat                   |
+   | Joe Pesci      | Goodfellas             | The Irishman           |
+   | John Cazale    | The Deer Hunter        | Dog Day Afternoon      |
+   | Diane Keaton   | The Godfather: Part II | The Godfather          |
+   +----------------+------------------------+------------------------+
+
    ```
 
 

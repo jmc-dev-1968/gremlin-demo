@@ -25,10 +25,12 @@ def summarize_graph(msg=""):
 
     vcnt1 = g.V().hasLabel('movie').count().next()
     vcnt2 = g.V().hasLabel('actor').count().next()
-    ecnt = g.E().hasLabel('acted_in').count().next()
+    vcnt3 = g.V().hasLabel('director').count().next()
+    ecnt1 = g.E().hasLabel('acted_in').count().next()
+    ecnt2 = g.E().hasLabel('directed_by').count().next()
     data = {
-        'object': ['vertex (movie)', 'vertex (actor)', 'edge (actor-movie)'],
-        'count': [vcnt1, vcnt2, ecnt],
+        'object': ['vertex (movie)', 'vertex (actor)', 'vertex (director)', 'edge (actor-movie)', 'edge (movie-director)'],
+        'count': [vcnt1, vcnt2, vcnt3, ecnt1, ecnt2]
     }
     df = pd.DataFrame(data)
     print(tabulate(df, headers='keys', tablefmt='psql', showindex=False))
@@ -46,10 +48,12 @@ def clean_graph():
 
     # (1) delete all edges
     g.E().hasLabel('acted_in').drop().iterate()
+    g.E().hasLabel('directed_by').drop().iterate()
 
     # (2) delete all movie vertices
     g.V().hasLabel('movie').drop().iterate()
     g.V().hasLabel('actor').drop().iterate()
+    g.V().hasLabel('director').drop().iterate()
 
     neptune.close()
 
@@ -64,17 +68,23 @@ def analyze_graph():
 
     msg =  "(1) sample vertices (movies)"
     print("\n{}\n".format(msg))
-    movies = g.V().hasLabel('movie').limit(20).project('name', 'year', 'director').by('name').by('year').by('director').toList()
+    movies = g.V().hasLabel('movie').limit(10).project('name', 'year', 'director').by('name').by('year').by('director').toList()
     df = pd.DataFrame(movies)
     print(tabulate(df, headers='keys', tablefmt='psql', showindex=False))
 
     msg =  "(2) sample vertices (actors)"
     print("\n{}\n".format(msg))
-    actors = g.V().hasLabel('actor').limit(20).project('name').by('name').toList()
+    actors = g.V().hasLabel('actor').limit(10).project('name').by('name').toList()
     df = pd.DataFrame(actors)
     print(tabulate(df, headers='keys', tablefmt='psql', showindex=False))
 
-    msg =  "(3) top 10 actors who have starred with the most other actors"
+    msg =  "(3) sample vertices (directors)"
+    print("\n{}\n".format(msg))
+    actors = g.V().hasLabel('director').limit(10).project('name').by('name').toList()
+    df = pd.DataFrame(actors)
+    print(tabulate(df, headers='keys', tablefmt='psql', showindex=False))
+
+    msg =  "(4) top 10 actors who have starred with the most other actors"
     print("\n{}\n".format(msg))
     q = (
         g.V().hasLabel('actor').as_('a')
@@ -94,7 +104,21 @@ def analyze_graph():
     df = pd.DataFrame(results)
     print(tabulate(df, headers='keys', tablefmt='psql', showindex=False))
 
-    msg =  "(4) top 10 actors who have starred with both de niro and pacino"
+    msg =  "(5) top 5 directors with the most movies"
+    print("\n{}\n".format(msg))
+    q = (
+        g.V().hasLabel('director')
+        .project('director', 'movie_count')
+        .by('name')
+        .by(__.in_('directed_by').count())
+        .order().by(__.select('movie_count'), Order.desc)
+        .limit(5)
+    )
+    results = q.toList()
+    df = pd.DataFrame(results)[['director', 'movie_count']]
+    print(tabulate(df, headers='keys', tablefmt='psql', showindex=False))
+
+    msg =  "(6) top 10 actors who have starred with both de niro and pacino"
     print("\n{}\n".format(msg))
     q = (
         g.V().hasLabel('actor').has('name', 'Robert De Niro')
@@ -115,7 +139,7 @@ def analyze_graph():
     df = pd.DataFrame(results)
     print(tabulate(df, headers='keys', tablefmt='psql', showindex=False))
 
-    msg =  "(5) top 10 actors who have starred with both de niro and pacino, and their movies"
+    msg =  "(7) top 10 actors who have starred with both de niro and pacino, and their movies"
     print("\n{}\n".format(msg))
 
     # find actors who worked with robert de niro
@@ -239,7 +263,7 @@ def s3_to_df(csv_file, prefix=""):
     return df
 
 
-def process_data():
+def process_data(save_to_s3=True, save_to_local=True):
 
     """
 
@@ -257,7 +281,7 @@ def process_data():
 
     """
 
-    # (1) read in movies+actors file 
+    # (0) read in movies+actors file
     data_dir = config.LOCAL_DATA_DIR
 
     # table is denormalized (pivoted on actors, 4 columns)
@@ -273,15 +297,27 @@ def process_data():
     # create id column (guid)
     df_movies_pvt['mid'] = [str(uuid.uuid4()) for _ in range(len(df_movies_pvt))]
 
-    # movies only (graphdb-ized data)
+    # (1) movies (vertex)
     df_movies = df_movies_pvt[['mid', 'name', 'year', 'director']].copy()
-    # needed for vertices file
     df_movies['label'] = "movie"
 
-    # (2.a) actors (pivoted)
+    # (2) directors (vertex)
+    df_directors = pd.DataFrame(df_movies['director'].unique(), columns=['director'])
+    # create id column (guid)
+    df_directors['did'] = [str(uuid.uuid4()) for _ in range(len(df_directors))]
+    df_directors['label'] = "director"
+
+    # (3) movie-director (edge)
+    # update movies with director id, create new df
+    df_movie_directors = pd.merge(df_movies, df_directors, on='director')[['mid', 'did', 'director']]
+    # create id column (guid)
+    df_movie_directors['mdid'] = [str(uuid.uuid4()) for _ in range(len(df_movie_directors))]
+    df_movie_directors['label'] = "directed_by"
+
+    # (4.a) actors (pivoted)
     df_actors_pivot = df_movies_pvt[['mid', 'actor_1', 'actor_2', 'actor_3', 'actor_4']]
 
-    # (2.b) movie-actors (normalized, but has actors now duplicated)
+    # (4.b) movie-actors (normalized, but has actors now duplicated)
     df_movie_actors = pd.melt(df_actors_pivot,
                         id_vars = ['mid'],
                         value_vars = ['actor_1', 'actor_2', 'actor_3', 'actor_4'],
@@ -292,43 +328,74 @@ def process_data():
     df_movie_actors['actor'] = df_movie_actors['actor'].str.split('_').str[1].astype(int)
     # create id column (guid)
     df_movie_actors['maid'] = [str(uuid.uuid4()) for _ in range(len(df_movie_actors))]
-    # needed for vertices file
+    # needed for edges file
     df_movie_actors['label'] = "acted_in"
 
-    # (2.c) actors (normalized, unduplicated)
+    # (4.c) actors (normalized, unduplicated)
     df_actors = pd.DataFrame(df_movie_actors['name'].unique(), columns=['name'])
     # create id column (guid)
     df_actors['aid'] = [str(uuid.uuid4()) for _ in range(len(df_actors))]
     # needed for vertices file
     df_actors['label'] = "actor"
 
-    # (3) update movie-actors with their aid's
+    # (5) update movie-actors with their aid's
     df_movie_actors = pd.merge(df_movie_actors, df_actors[['aid', 'name']], on='name')[['maid', 'mid', 'aid', 'name', 'label']]
 
-    # test (look at one movie, and their actors)
+    # test (join dfs back together to test vertexs/edges)
     """
-    df_test = pd.merge(df_movie_actors, df_movies, on='mid')
+    df_test = pd.merge(df_movies[['mid', 'name']].rename(columns = {'name': 'movie_name'}), df_movie_actors[['maid', 'mid', 'aid']], on = 'mid')
+    df_test = pd.merge(df_actors[['aid', 'name']].rename(columns = {'name': 'actor_name'}), df_test, on = 'aid')
     #  look at one movie, and their actors
-    print(df_test[df_test['name_y'] == 'The Shawshank Redemption'])
+    print(df_test[df_test['movie_name'] == 'The Shawshank Redemption'])
     #  look at one actor, and their movies
-    print(df_test[df_test['name_x'] == 'Morgan Freeman'])
+    print(df_test[df_test['actor_name'] == 'Morgan Freeman'])
+    df_test = pd.merge(df_movies[['mid', 'name']].rename(columns = {'name': 'movie_name'}), df_movie_directors[['mdid', 'mid', 'did']], on = 'mid')
+    df_test = pd.merge(df_directors[['did', 'director']].rename(columns={'director': 'director_name'}), df_test, on='did')
+    # look at one director and their movies
+    print(df_test[df_test['director_name'] == 'Frank Darabont'])
     """
 
-    # (4) save df's to csv (locally, so they can be viewed in the git project, and s3 where they will be loaded to Neptune)
-    df_csv = (df_movies[['mid', 'label', 'name', 'year', 'director']].
-              rename(columns = {'mid': '~id', 'label': '~label', 'name': 'name:String', 'year': 'year:String', 'director': 'director:String'}).copy())
-    df_to_local_fs(df_csv, "vertices--movie.csv")
-    df_to_s3(df_csv, "vertices--movie.csv", "graph-csv/vertices")
+    # (6) save df's to csv (locally, so they can be viewed in the git project, and s3 where they will be loaded to Neptune)
 
+    # movies (vertex)
+    df_csv = (df_movies[['mid', 'label', 'name', 'year']].
+              rename(columns = {'mid': '~id', 'label': '~label', 'name': 'name:String', 'year': 'year:String'}).copy())
+    if save_to_local:
+        df_to_local_fs(df_csv, "vertices--movie.csv")
+    if save_to_s3:
+        df_to_s3(df_csv, "vertices--movie.csv", "graph-csv/vertices")
+
+    # directors (vertex)
+    df_csv = (df_directors[['did', 'label', 'director']].
+              rename(columns = {'did': '~id', 'label': '~label', 'director': 'name:String'}).copy())
+    if save_to_local:
+        df_to_local_fs(df_csv, "vertices--director.csv")
+    if save_to_s3:
+        df_to_s3(df_csv, "vertices--director.csv", "graph-csv/vertices")
+
+    # actors (vertex)
     df_csv = (df_actors[['aid', 'label', 'name']].
               rename(columns = {'aid': '~id', 'label': '~label', 'name': 'name:String'}).copy())
-    df_to_local_fs(df_csv, "vertices--actor.csv")
-    df_to_s3(df_csv, "vertices--actor.csv", "graph-csv/vertices")
+    if save_to_local:
+        df_to_local_fs(df_csv, "vertices--actor.csv")
+    if save_to_s3:
+        df_to_s3(df_csv, "vertices--actor.csv", "graph-csv/vertices")
 
+    # actor-movie (edge)
     df_csv = (df_movie_actors[['maid', 'aid', 'mid', 'label']].
               rename(columns = {'maid': '~id', 'aid': '~from', 'mid': '~to', 'label': '~label'}).copy())
-    df_to_local_fs(df_csv, "edges--actor-movie.csv")
-    df_to_s3(df_csv, "edges--actor-movie.csv", "graph-csv/edges")
+    if save_to_local:
+        df_to_local_fs(df_csv, "edges--actor-movie.csv")
+    if save_to_s3:
+        df_to_s3(df_csv, "edges--actor-movie.csv", "graph-csv/edges")
+
+    # movie-director (edge)
+    df_csv = (df_movie_directors[['mdid', 'mid', 'did', 'label']].
+              rename(columns = {'mdid': '~id', 'mid': '~from', 'did': '~to', 'label': '~label'}).copy())
+    if save_to_local:
+        df_to_local_fs(df_csv, "edges--movie-director.csv")
+    if save_to_s3:
+        df_to_s3(df_csv, "edges--movie-director.csv", "graph-csv/edges")
 
 
 def load_data(obj_type):
